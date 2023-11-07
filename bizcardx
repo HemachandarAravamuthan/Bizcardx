@@ -1,129 +1,196 @@
-import easyocr  
-import streamlit as st 
-from PIL import Image
-import numpy as np 
-import re
+#importing required packages
+import streamlit as st
+import numpy as np
 import pandas as pd
+import easyocr
+from PIL import Image
 import mysql.connector
+import re
 
-st. set_page_config(layout="wide")
-st.title(":orange[UNLOCKING DATA FROM BUSINESS CARDS USING OCR]") 
-st.write(" ")
-col1, col2,col3= st.columns([3,0.5,4.5])
-with col1:
-    #image uploader
-    st.write("## UPLOAD IMAGE")
-    image = st.file_uploader(label = "",type=['png','jpg','jpeg'])
+#setting the sql server
+mydb = mysql.connector.connect(
+  host="localhost",
+  user="root",
+  password="",
+  database='bizcardx'
+)
+
+mycursor = mydb.cursor(buffered=True)
+
+#streamlit page layout setup
+st.set_page_config(page_title='Bizcardx', page_icon=None, layout="wide", initial_sidebar_state="auto", menu_items=None)
+uploaded = st.file_uploader('''      Upload the business card to exctract ''', type = ['PNG', 'JPEG', 'JPG'])
+
+#function to extract text
+def extract(array):
+    reader = easyocr.Reader(['en'],gpu=False)
+    result = reader.readtext(array)
+    text = ''
+    for word in result:
+        text += word[1] + ' '
+    return text
+
+#function to classify company name
+def company(sent):
+    key = ['Sun Electricals','selva digitals','Family Restaurant','BORCELLE AIRLINES','GLOBAL INSURANCE']
+    company_name=''
+    for word in sent:
+        company_name=''
+        for i in key:
+            com = i.split()
+            for j in com:
+                if re.match(j,word):
+                    company_name = i
+    return company_name
+
+#function to classify degination
+def designation(sent):
+    des=['Marketing Executive','Technical Manager','General Manager','CEO & FOUNDER','DATA MANAGER']
+    design=''
+    for word in sent:
+        for i in des:
+            role=i.split()
+            for j in role:
+                if re.match(j,word):
+                    design = i
+    return design
+
+#function to classify mobile number
+def number(sent):
+    num =''
+    for word in sent:
+        if '-' in word:
+            num = word
+    return num
+
+#function to classify email address
+def mail(sent):
+    email=''
+    for word in sent:
+        if re.match(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b',word):
+            email = word
+    return email
+
+#function to classify website url
+def website(sent):
+    url = ''
+    for word in sent:
+        if re.match(r'^www.[a-zA-Z]',word):
+            url = word
+    return url
+
+#function to classify area
+def area(sent):
+    area_out=''
+    for word in sent:
+        if re.match('St$', word):
+            x = sent.index(word)
+            area_out+=sent[x-2]+' '+sent[x-1]+' '+word
+    return area_out
+
+#function to classify city
+def city(sent):
+    city_out=''
+    for word in sent:
+        if re.match('St$',word):
+            x = sent.index(word)
+            for i in range(1,3):
+                if re.match('[A-Za-z]',sent[x+i]):
+                    city_out+=sent[x+i]
+                    break
+    return city_out
+
+#function to classify state
+def state(sent):
+    state = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa',
+            'Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Maharashtra',
+            'Madhya Pradesh','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab',
+            'Rajasthan','Sikkim','TamilNadu','Tripura','Telangana','Uttar Pradesh','Uttarakhand','West Bengal']
+    for word in sent:
+        for i in state:
+            if i in word:
+                return i
+
+#function to classify pincode
+def pin(sent):
+    pin = ''
+    for word in sent:
+        if len(word) == 6 and re.match(r'[0-9]',word):
+            pin = word
+    return pin
+
+#function to classify card holder name
+def name(sent):
+    hold=''
+    ext=[]
+    des=['Marketing',' Executive','Technical','Manager','General','Manager','CEO','&','FOUNDER','DATA','MANAGER']
+    for word in sent:
+        for i in des:
+          if i in word:
+            ind=sent.index(i)
+            ext =(sent[:ind])
+            for role in ext:
+              if role not in des and role not in hold:
+                hold += role + ' '
+    return hold
+
+#function to create table in sql
+def create_table():
+    mycursor.execute("""CREATE TABLE IF NOT EXISTS data
+                     (Company VARCHAR(50),Card_holder_name VARCHAR(20),Designation VARCHAR(50),
+                     Mobile VARCHAR(20),Email VARCHAR(30),Website VARCHAR(50),
+                     Area VARCHAR(30),City VARCHAR(50),State VARCHAR(30),Pin_code Varchar(10))""")
+    mydb.commit()
+
+#streamlit columns setup
+col1,col2,col3 = st.columns(3)
 
 
-reader = easyocr.Reader(['en'],gpu = False)
+if uploaded is not None:
+    img = Image.open(uploaded)
+    arr = (np.array(img))
+    data = extract(arr)
 
-if image is not None:
-    input_image = Image.open(image)
+    extract_text = data.split()
+    
+    #assigning the sorted value
+    company_name = company(extract_text)
+    card_holder_name = name(extract_text)
+    desig = designation(extract_text)
+    mobile = number(extract_text)
+    email_address = mail(extract_text)
+    website_url = website(extract_text)
+    area_line = area(extract_text)
+    city_line = city(extract_text)
+    state_line = state(extract_text)
+    pin_code = pin(extract_text)
+
     with col1:
-        st.image(input_image)        
+        #Writing the sorted values
+        st.button('EXTRACTED TEXT')
+        st.write('''Company:''',company_name)
+        st.write('''Card holder name:''',card_holder_name)
+        st.write('''Designation:''',desig)
+        st.write('''Mobile:''',mobile)
+        st.write('''Email:''',email_address)
+        st.write('''Website:''',website_url)
+        st.write('''Area:''',area_line)
+        st.write('''City:''',city_line)
+        st.write('''State:''',state_line)
+        st.write('''Pin code:''',pin_code)
     
-    result = reader.readtext(np.array(input_image))
-    result_text = [] #empty list for results
-    for text in result:
-        result_text.append(text[1])
-          
-    PH=[]
-    PHID=[]  
-    ADD=set()
-    AID=[]
-    EMAIL=''
-    EID=''
-    PIN=''
-    PID=''
-    WEB=''
-    WID=''
+    with col2:
+        #inserting the sorted values in sql table
+        if st.button('SAVE'):
+            create_table()
+            query = """INSERT INTO data VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
+            mycursor.execute(query,(company_name,card_holder_name,desig,mobile,email_address,website_url,area_line,city_line,state_line,pin_code))
+            mydb.commit()
+            st.success('SUCCESSFULLY SAVED')
     
-    for i, string in enumerate(result_text):   
-        #st.write(string.lower())     
-        
-        # TO FIND EMAIL
-        if re.search(r'@', string.lower()):
-            EMAIL=string.lower()
-            EID=i
-        
-        # TO FIND PINCODE
-        match = re.search(r'\d{6,7}', string.lower())
-        if match:
-            PIN=match.group()
-            PID=i
-                       
-        # TO FIND PHONE NUMBER    
-        # match = re.search(r'(?:ph|phone|phno)?(?:[+-]?\d*){7,}', string)
-        #match = re.search(r'(?:ph|phone|phno)?\s*(?:[+-]?\d\s*){7,}', string)
-        match = re.search(r'(?:ph|phone|phno)?\s*(?:[+-]?\d\s*[\(\)]*){7,}', string)
-        if match and len(re.findall(r'\d', string)) > 7:
-            PH.append(string)
-            PHID.append(i)
-
-
-            
-        # TO FIND ADDRESS 
-        keywords = ['road', 'floor', ' st ', 'st,', 'street', ' dt ', 'district',
-                    'near', 'beside', 'opposite', ' at ', ' in ', 'center', 'main road',
-                   'state','country', 'post','zip','city','zone','mandal','town','rural',
-                    'circle','next to','across from','area','building','towers','village',
-                    ' ST ',' VA ',' VA,',' EAST ',' WEST ',' NORTH ',' SOUTH ']
-        # Define the regular expression pattern to match six or seven continuous digits
-        digit_pattern = r'\d{6,7}'
-        # Check if the string contains any of the keywords or a sequence of six or seven digits
-        if any(keyword in string.lower() for keyword in keywords) or re.search(digit_pattern, string):
-            ADD.add(string)
-            AID.append(i)
-            
-        # TO FIND STATE (USING SIMILARITY SCORE)
-        states = ['Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat', 
-          'Haryana','Hyderabad', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
-            'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 
-            'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
-              "United States", "China", "Japan", "Germany", "United Kingdom", "France", "India", 
-               "Canada", "Italy", "South Korea", "Russia", "Australia", "Brazil", "Spain", "Mexico", 'USA','UK']
-
-        import Levenshtein
-        def string_similarity(s1, s2):
-            distance = Levenshtein.distance(s1, s2)
-            similarity = 1 - (distance / max(len(s1), len(s2)))
-            return similarity * 100
-        
-        for x in states:
-            similarity = string_similarity(x.lower(), string.lower())
-            if similarity > 50:
-                ADD.add(string)
-                AID.append(i)
-                
-        # WEBSITE URL          
-        if re.match(r"(?!.*@)(www|.*com$)", string):
-            WEB=string.lower()
-            WID=i 
-    with col3: 
-        # DISPLAY ALL THE ELEMENTS OF BUSINESS CARD 
-        st.write("## EXTRACTED TEXT")
-        st.write('##### :red[WEBSITE URL: ] '+ str(WEB))
-        st.write('##### :red[EMAIL: ] '+ str(EMAIL)) 
-        st.write('##### :red[PIN CODE: ] '+ str(PIN)) 
-        ph_str = ', '.join(PH)
-        st.write('##### :red[PHONE NUMBER(S): ] '+ph_str)
-        add_str = ' '.join([str(elem) for elem in ADD])
-        st.write('##### :red[ADDRESS: ] ', add_str)
-
-        IDS= [EID,PID,WID]
-        IDS.extend(AID)
-        IDS.extend(PHID)
-        
-        oth=''                               
-        fin=[]                        
-        for i, string in enumerate(result_text):
-            if i not in IDS:
-                if len(string) >= 4 and ',' not in string and '.' not in string and 'www.' not in string:
-                    if not re.match("^[0-9]{0,3}$", string) and not re.match("^[^a-zA-Z0-9]+$", string):
-                        numbers = re.findall('\d+', string)
-                        if len(numbers) == 0 or all(len(num) < 3 for num in numbers) and not any(num in string for num in ['0','1','2','3','4','5','6','7','8','9']*3):
-                            fin.append(string)
-        st.write('##### :red[CARD HOLDER & COMPANY DETAILS: ] ')
-        for i in fin:
-            st.write('##### '+i)
+    with col3:
+        #getting the saved data
+        if st.button('SHOW THE STORED DATA'):
+            mycursor.execute("""SELECT * FROM data""")
+            data_df = pd.DataFrame(mycursor.fetchall(),columns=mycursor.column_names)
+            st.write(data_df.T)
