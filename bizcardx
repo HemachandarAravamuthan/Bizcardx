@@ -137,7 +137,7 @@ def name(sent):
 #function to create table in sql
 def create_table():
     mycursor.execute("""CREATE TABLE IF NOT EXISTS data
-                     (Company VARCHAR(50),Card_holder_name VARCHAR(20),Designation VARCHAR(50),
+                     (Company VARCHAR(50) Primary key,Card_holder_name VARCHAR(20),Designation VARCHAR(50),
                      Mobile VARCHAR(20),Email VARCHAR(30),Website VARCHAR(50),
                      Area VARCHAR(30),City VARCHAR(50),State VARCHAR(30),Pin_code Varchar(10))""")
     mydb.commit()
@@ -183,17 +183,30 @@ if uploaded is not None:
         #inserting the sorted values in sql table
         if st.button('SAVE'):
             create_table()
-            query = """INSERT INTO data VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
-            mycursor.execute(query,(company_name,card_holder_name,desig,mobile,email_address,website_url,area_line,city_line,state_line,pin_code))
-            mydb.commit()
-            st.success('SUCCESSFULLY SAVED')
+            try:
+                query = """INSERT INTO data VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
+                mycursor.execute(query,(company_name,card_holder_name,desig,mobile,email_address,website_url,area_line,city_line,state_line,pin_code))
+                mydb.commit()
+                st.success('SUCCESSFULLY SAVED')
+            except:
+                st.error('ALREADY EXIST')
     
     with col3:
         #getting the saved data
-        if st.button('SHOW THE STORED DATA'):
-            mycursor.execute("""SELECT * FROM data""")
-            data_df = pd.DataFrame(mycursor.fetchall(),columns=mycursor.column_names)
-            st.write(data_df.T)
+        try:
+            if st.button('SHOW THE STORED DATA'):
+                mycursor.execute("""SELECT * FROM data""")
+                data_df = pd.DataFrame(mycursor.fetchall(),columns=mycursor.column_names)
+                st.write(data_df.T)       
+        except:
+            st.code('NO DATA SAVED')
+        
+        #deleting the saved data
+        if st.button('DELETE'):
+                mycursor.execute(""" DROP TABLE data""")
+                mydb.commit()
+                st.success('DELETED SUCCESSFULLY')
+
     
     if st.button('Image'):
         st.image(img)
