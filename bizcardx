@@ -194,3 +194,6 @@ if uploaded is not None:
             mycursor.execute("""SELECT * FROM data""")
             data_df = pd.DataFrame(mycursor.fetchall(),columns=mycursor.column_names)
             st.write(data_df.T)
+    
+    if st.button('Image'):
+        st.image(img)
